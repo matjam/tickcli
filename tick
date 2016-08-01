@@ -1,0 +1,277 @@
+#!/usr/bin/python
+
+# following dependencies must be installed
+#
+# sudo easy_install requests
+
+from __future__ import print_function
+from tickspot import *
+import datetime
+from sys import *
+
+t = TickSession("tickspot_settings")
+
+# Sets the current user if not already set. This is a convenience, it's
+# unlikely your login lets you modify multiple users unless you are Jamie.
+
+if not 'current_user' in t.config:
+    users = t.get_users()
+    t.config['current_user'] = users[0]['id']
+    t.save_config()
+
+# prints to stderr. Python 2.7 is shit.
+
+def eprint(*args, **kwargs):
+    print(*args, file=stderr, **kwargs)
+
+def main():
+    if len(argv) == 1:
+        print_help()
+
+    if (argv[1] == 'show'):
+        if len(argv) < 3:
+            eprint ('''  show projects                    - shows all projects
+  show project [<id>]              - shows specified or current project
+  show tasks                       - shows tasks for the selected project
+  show task [<id>]                 - shows specified or current task
+  show entries [<date>] [<date>]   - shows entries for the selected task
+  show users                       - shows users available via this login''')
+            exit(2)
+
+        if (argv[2] == 'projects'):
+            show_projects()
+        elif (argv[2] == 'project'):
+            if len(argv) != 4:
+                show_project()
+            else:
+                show_project(argv[3])
+        elif (argv[2] == 'tasks'):
+            show_tasks()
+        elif (argv[2] == 'task'):
+            if len(argv) != 4:
+                show_task()
+            else:
+                show_task(argv[3])
+        elif (argv[2] == 'entries'):
+            if len(argv) != 5:
+                eprint('Command requires a from and to date')
+                exit(2)
+            show_entries(argv[3], argv[4])
+        elif (argv[2] == 'users'):
+            show_users()
+        else:
+            eprint ('Unknown command: ', argv[0], argv[1], argv[2])
+    elif (argv[1] == 'set'):
+        if len(argv) < 3:
+            eprint ('''  set project <project_id>  - sets the current project to project_id
+      set task <task_id>        - sets the current task to task_id
+      set user <user_id>        - sets the current user to user_id
+      set date <YYYY-MM-DD|today>                - sets a single date
+      set range <YYYY-MM-DD> <YYYY-MM-DD|today>  - sets a range of dates''')
+            exit(2)
+
+        elif (argv[2] == 'project'):
+            if len(argv) != 4:
+                print ('%s set project <id> - requires an argument.' % argv[0])
+                exit(2)
+            set_project(argv[3])
+        elif (argv[2] == 'task'):
+            if len(argv) != 4:
+                print ('%s set task <id> - requires an argument.' % argv[0])
+                exit(2)
+            set_task(argv[3])
+        elif (argv[2] == 'user'):
+            if len(argv) != 4:
+                print ('%s set user <id> - requires an argument.' % argv[0])
+                exit(2)
+            set_user(argv[3])
+        else:
+            eprint("Unknown set command")
+    elif (argv[1] == 'set'):
+
+    else:
+        eprint ('Unknown command: ', argv[1])
+
+def show_projects():
+    projects = t.get_projects()
+
+    for project in projects:
+        print ("Project id [%s]: %s" % (project['id'], project['name']))
+
+def show_project(project_id=None):
+    if project_id == None:
+        if not 'current_project' in t.config:
+            eprint('No project_id was provided or set via {0} set project.'.format(argv[0]))
+            eprint('Try {0} show projects then set a project using {0} set project <id>'.format(argv[0]))
+            exit(2)
+        else:
+            project_id = t.config['current_project']
+
+    try:
+        project = t.get_project(int(project_id))
+    except TickError as e:
+        eprint ("project [%s] does not exist: %s" % (project_id, e))
+        exit(2)
+
+    try:
+        used = int(round(float(project['total_hours']) / float(project['budget']) * 100, 0))
+    except ZeroDivisionError:
+        used = 0
+
+    print("[{0}] {1}".format(project['id'], project['name']))
+    print("  Budgeted {0} hours, {1} Total booked (%{2})".format(project['budget'], project['total_hours'], used))
+
+def set_project(project_id):
+    # check to see if project_id exists
+    try:
+        project = t.get_project(int(project_id))
+    except TickError as e:
+        eprint ("Project [%s] does not exist: %s" % (project_id, e))
+        exit(2)
+    t.config['current_project'] = project_id
+    t.save_config()
+
+def set_task(task_id):
+    # check to see if task_id exists
+    try:
+        task = t.get_task(int(task_id))
+    except TickError as e:
+        eprint ("Task [%s] does not exist: %s" % (task_id, e))
+        exit(2)
+    t.config['current_task'] = task_id
+    t.save_config()
+
+def show_tasks():
+    if not 'current_project' in t.config:
+        eprint("Current project is not set. Try using {0} set project <project_id>".format(argv[0]))
+        exit(2)
+
+    show_project(t.config['current_project'])
+
+    try:
+        tasks = t.get_tasks(int(t.config['current_project']))
+    except TickError as e:
+        eprint("Unable to fetch tasks: {0}".format(e))
+        exit(2)
+
+    for task in tasks:
+        print("    [{0}] {1}".format(task['id'], task['name']))
+
+def show_task(task_id = None):
+    if task_id == None:
+        if not 'current_task' in t.config:
+            eprint('No task_id was provided or set via {0} set task.'.format(argv[0]))
+            eprint('Try {0} show tasks then set a task using {0} set task <id>'.format(argv[0]))
+            exit(2)
+        else:
+            task_id = t.config['current_task']
+
+    try:
+        task = t.get_task(int(task_id))
+    except TickError as e:
+        eprint ("Task [%s] does not exist: %s" % (task_id, e))
+        exit(2)
+
+    project = task['project']
+
+    print("[{0}] {1}".format(project['id'], project['name']))
+    print("  Total budget {0} hours".format(project['budget']))
+    print("    [{0}] {1} ({2} hours booked on this task)".format(task['id'], task['name'], task['total_hours']))
+
+def show_users():
+    users = t.get_users()
+
+    for user in users:
+        print ("User id [%s]: %s %s <%s>" % (user['id'], user['first_name'], user['last_name'], user['email']))
+
+def set_user(user_id):
+    # check to see if user_id exists
+    try:
+        users = t.get_users()
+    except TickError as e:
+        eprint ("Unable to get list of users: %s" % e)
+        exit(2)
+
+    found = 0
+    for user in users:
+        if int(user['id']) == int(user_id):
+            found = 1
+
+    if found == 0:
+        eprint("User specified does not exist")
+        exit(2)
+
+    t.config['current_user'] = user_id
+    t.save_config()
+
+def show_entries(from_date, to_date):
+    entries = t.get_entries(from_date, to_date)
+    projects = t.get_projects()
+    project_map = {}
+
+    for project in projects:
+        project_map[project['id']] = project['name']
+
+    sorted_entries = sorted(entries, key=lambda k: k['date'])
+
+    for entry in sorted_entries:
+        task = t.get_task(entry['task_id'])
+        task_name = task['name']
+        task_id = task['id']
+        task_project = task['project']
+        project_id = task_project['id']
+        project_name = task_project['name']
+        print('{6} {0} {1}h {2} [{3}] {4} [{5}]'.format(entry['date'], entry['hours'], project_id, project_name, task_id, task_name, entry['id']))
+
+def delete(entry_id)
+    t.delete_entry(entry_id)
+
+def print_help():
+    eprint ('''tick - command to log to tickspot via the CLI.
+
+The tick command allows you to log time against tick via the CLI. It makes it
+easy to add time to a single date, or to a range of dates. You can view your
+current projects and tasks, and see what time you've already logged.
+
+To view your current tick data, use the "tick show" commands:
+
+  show projects                    - shows all projects
+  show project [<id>]              - shows specified or current project
+  show tasks                       - shows tasks for the selected project
+  show task [<id>]                 - shows specified or current task
+  show entries [<date>] [<date>]   - shows entries for the selected user
+  show users                       - shows users available via this login
+
+To select a project or a task, you need to use the "tick set" commands:
+
+  set project <project_id>  - sets the current project to project_id
+  set task <task_id>        - sets the current task to task_id
+  set user <user_id>        - sets the current user to user_id
+
+These commands persist between invocations by writing the current project and
+task to the configuration file. Additionally, you can set dates and ranges of
+dates that the log commands will affect using the following "tick set"
+commands:
+
+  set date <YYYY-MM-DD|today>                - sets a single date
+  set range <YYYY-MM-DD> <YYYY-MM-DD|today>  - sets a range of dates
+
+To actually log time, use the "tick log" commands. These commands require
+that a project, task, user and a date or date range be set before being used.
+
+Note that the "set range" command will only select week days. Weekends can be
+chosen only with "set date", and must be logged to individually.
+
+  log <hours>        - Logs to a single day set by "set date".
+  log range <hours>  - Logs to a range of dates set by "set range".
+
+You can delete an entry with the "tick delete" command:
+
+  delete <id>  - Deletes a single entry with a given entry ID.
+
+The tick command stores it's persistant data to the 'tickspot_settings' file.
+This file is just json; you can edit it. It does not store your password; it
+only stores your API token.''')
+    exit(2)
+
+main()
