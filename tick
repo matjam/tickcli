@@ -88,7 +88,8 @@ def main():
         else:
             eprint("Unknown set command")
     elif (argv[1] == 'set'):
-
+        eprint('Unimplemented :-(')
+        exit(2)
     else:
         eprint ('Unknown command: ', argv[1])
 
@@ -223,7 +224,7 @@ def show_entries(from_date, to_date):
         project_name = task_project['name']
         print('{6} {0} {1}h {2} [{3}] {4} [{5}]'.format(entry['date'], entry['hours'], project_id, project_name, task_id, task_name, entry['id']))
 
-def delete(entry_id)
+def delete(entry_id):
     t.delete_entry(entry_id)
 
 def print_help():
